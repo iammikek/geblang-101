@@ -1,0 +1,72 @@
+import web.http as wh;
+import json;
+import domain;
+
+## Builds a {detail, code?} JSON error response.
+export func domainErrorResponse(any err): dict<string, any> {
+    domain.DomainError derr = err as domain.DomainError;
+    dict<string, any> body = {"detail": derr.detail};
+    if (!derr.code.isEmpty()) {
+        body["code"] = derr.code;
+    }
+    return wh.jsonStatus(body, derr.status);
+}
+
+## Runs a handler and maps DomainError to JSON responses.
+export func wrap(callable handler): callable {
+    return func(dict<string, any> request): dict<string, any> {
+        try {
+            return handler(request) as dict<string, any>;
+        } catch (domain.DomainError err) {
+            return domainErrorResponse(err);
+        } catch (Error err) {
+            return wh.jsonStatus({"detail": "Internal server error"}, 500);
+        }
+    };
+}
+
+## Parses a JSON request body into a dictionary (empty on failure).
+export func jsonBody(dict<string, any> request): dict<string, any> {
+    let req = wh.requestObject(request);
+    try {
+        return req.jsonBody();
+    } catch (Error e) {
+        return {};
+    }
+}
+
+## Parses application/x-www-form-urlencoded body fields.
+export func formBody(dict<string, any> request): dict<string, any> {
+    return wh.requestObject(request).form();
+}
+
+## Reads a query parameter as a string (empty when missing).
+export func query(dict<string, any> request, string name): string {
+    return wh.requestObject(request).queryParam(name);
+}
+
+## Reads a route parameter as a string.
+export func param(dict<string, any> request, string name): string {
+    return wh.requestObject(request).param(name);
+}
+
+## Reads a route parameter as an int.
+export func paramInt(dict<string, any> request, string name): int {
+    return param(request, name) as int;
+}
+
+## Parses response JSON body in tests.
+export func parseBody(dict<string, any> response): dict<string, any> {
+    any body = response["body"];
+    if (body instanceof dict) {
+        return body as dict<string, any>;
+    }
+    if (body instanceof string) {
+        string text = body as string;
+        if (text.isEmpty()) {
+            return {};
+        }
+        return json.parse(text) as dict<string, any>;
+    }
+    return {};
+}

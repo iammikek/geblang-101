@@ -1,0 +1,53 @@
+import test;
+import support.testkit as h;
+
+class CategoriesTest extends test.Test {
+    @test
+    func createRequiresAuth(): void {
+        let application = h.setupApp();
+        let response = h.postJson(application, "/categories", {"name": "Tools"});
+        this.assertEquals(401, h.statusOf(response));
+    }
+
+    @test
+    func createAndList(): void {
+        let application = h.setupApp();
+        string token = h.authToken(application);
+        let created = h.postJsonAuth(application, "/categories", {
+            "name": "Books",
+            "description": "Reading"
+        }, token);
+        this.assertEquals(201, h.statusOf(created));
+        this.assertEquals("Books", h.bodyOf(created)["name"]);
+
+        let listed = h.get(application, "/categories");
+        this.assertEquals(200, h.statusOf(listed));
+        this.assertEquals(1, h.bodyOf(listed)["total"]);
+    }
+
+    @test
+    func duplicateNameConflicts(): void {
+        let application = h.setupApp();
+        string token = h.authToken(application);
+        this.assertEquals(201, h.statusOf(h.postJsonAuth(application, "/categories", {"name": "Tools"}, token)));
+        let response = h.postJsonAuth(application, "/categories", {"name": "Tools"}, token);
+        this.assertEquals(409, h.statusOf(response));
+        this.assertEquals("CATEGORY_NAME_EXISTS", h.bodyOf(response)["code"]);
+    }
+
+    @test
+    func patchAndDelete(): void {
+        let application = h.setupApp();
+        string token = h.authToken(application);
+        let created = h.postJsonAuth(application, "/categories", {"name": "Old"}, token);
+        int id = h.bodyOf(created)["id"] as int;
+        string path = "/categories/" + (id as string);
+
+        let patched = h.patchJsonAuth(application, path, {"name": "New"}, token);
+        this.assertEquals(200, h.statusOf(patched));
+        this.assertEquals("New", h.bodyOf(patched)["name"]);
+
+        let deleted = h.deleteAuth(application, path, token);
+        this.assertEquals(204, h.statusOf(deleted));
+    }
+}

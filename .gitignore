@@ -1,0 +1,12 @@
+.idea/
+.vscode/
+*.sqlite
+*.sqlite-journal
+database/database.sqlite
+database/test.sqlite
+.env
+.DS_Store
+__pycache__/
+*.pyc
+dist/
+build/

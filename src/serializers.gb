@@ -1,0 +1,65 @@
+## Serializes a user row to the public JSON shape.
+export func user(dict<string, any> row): dict<string, any> {
+    return {
+        "id": row["id"] as int,
+        "email": row["email"] as string
+    };
+}
+
+## Serializes a category row.
+export func category(dict<string, any> row): dict<string, any> {
+    any description = null;
+    if (row.hasKey("description") && row["description"] != null) {
+        description = row["description"];
+    }
+    return {
+        "id": row["id"] as int,
+        "name": row["name"] as string,
+        "description": description
+    };
+}
+
+## Serializes an item row (with optional joined category columns).
+export func item(dict<string, any> row): dict<string, any> {
+    any categoryId = null;
+    if (row.hasKey("category_id") && row["category_id"] != null) {
+        categoryId = row["category_id"] as int;
+    }
+
+    any nested = null;
+    if (row.hasKey("cat_id") && row["cat_id"] != null) {
+        any catDescription = null;
+        if (row.hasKey("cat_description") && row["cat_description"] != null) {
+            catDescription = row["cat_description"];
+        }
+        nested = {
+            "id": row["cat_id"] as int,
+            "name": row["cat_name"] as string,
+            "description": catDescription
+        };
+    }
+
+    any description = null;
+    if (row.hasKey("description") && row["description"] != null) {
+        description = row["description"];
+    }
+
+    return {
+        "id": row["id"] as int,
+        "name": row["name"] as string,
+        "description": description,
+        "price": (row["price"] as decimal) as float,
+        "category_id": categoryId,
+        "category": nested
+    };
+}
+
+## Pagination envelope used by list endpoints.
+export func paginate(list<any> items, int total, int skip, int limit): dict<string, any> {
+    return {
+        "items": items,
+        "total": total,
+        "skip": skip,
+        "limit": limit
+    };
+}

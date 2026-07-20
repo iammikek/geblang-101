@@ -1,0 +1,97 @@
+import db;
+import database;
+import domain;
+import serializers;
+
+## Lists categories with skip/limit pagination.
+export func listCategories(int skip, int limit): dict<string, any> {
+    let conn = database.connection();
+    let countRows = conn.query("SELECT COUNT(*) AS count FROM categories");
+    defer countRows.close();
+    int total = (countRows.first() as dict<string, any>)["count"] as int;
+
+    let rows = conn.query("SELECT * FROM categories ORDER BY id LIMIT ? OFFSET ?", limit, skip);
+    defer rows.close();
+    list<any> items = [];
+    for (row in rows) {
+        items.append(serializers.category(row as dict<string, any>));
+    }
+    return serializers.paginate(items, total, skip, limit);
+}
+
+## Loads a category or throws CategoryNotFoundError.
+export func getById(int categoryId): dict<string, any> {
+    let rows = database.connection().query("SELECT * FROM categories WHERE id = ?", categoryId);
+    defer rows.close();
+    let row = rows.first();
+    if (row == null) {
+        throw domain.CategoryNotFoundError(categoryId);
+    }
+    return serializers.category(row as dict<string, any>);
+}
+
+func ensureUniqueName(string name, any excludeId): void {
+    any rows = null;
+    if (excludeId == null) {
+        rows = database.connection().query("SELECT id FROM categories WHERE name = ?", name);
+    } else {
+        rows = database.connection().query(
+            "SELECT id FROM categories WHERE name = ? AND id != ?",
+            name,
+            excludeId as int
+        );
+    }
+    defer (rows as db.Rows).close();
+    if ((rows as db.Rows).first() != null) {
+        throw domain.CategoryNameExistsError(name);
+    }
+}
+
+## Creates a category.
+export func create(string name, any description): dict<string, any> {
+    ensureUniqueName(name, null);
+    let result = database.connection().exec(
+        "INSERT INTO categories (name, description) VALUES (?, ?)",
+        name,
+        description
+    );
+    return getById(result["lastInsertId"] as int);
+}
+
+## Updates a category with partial fields.
+export func update(int categoryId, dict<string, any> data): dict<string, any> {
+    dict<string, any> current = getById(categoryId);
+    string name = current["name"] as string;
+    any description = current["description"];
+
+    if (data.hasKey("name") && data["name"] != null) {
+        name = data["name"] as string;
+        ensureUniqueName(name, categoryId);
+    }
+    if (data.hasKey("description")) {
+        description = data["description"];
+    }
+
+    database.connection().exec(
+        "UPDATE categories SET name = ?, description = ? WHERE id = ?",
+        name,
+        description,
+        categoryId
+    );
+    return getById(categoryId);
+}
+
+## Deletes a category when it has no items.
+export func delete(int categoryId): void {
+    getById(categoryId);
+    let rows = database.connection().query(
+        "SELECT COUNT(*) AS count FROM items WHERE category_id = ?",
+        categoryId
+    );
+    defer rows.close();
+    int inUse = (rows.first() as dict<string, any>)["count"] as int;
+    if (inUse > 0) {
+        throw domain.CategoryInUseError();
+    }
+    database.connection().exec("DELETE FROM categories WHERE id = ?", categoryId);
+}

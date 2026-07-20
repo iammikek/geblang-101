@@ -1,0 +1,17 @@
+import web.http as wh;
+import web.router as router;
+import support.http_helpers as helpers;
+
+## Registers GET / and GET /health.
+export func register(any app): void {
+    router.get(app, "/", helpers.wrap(func(dict<string, any> request): dict<string, any> {
+        return wh.jsonResponse({
+            "message": "Hello from geblang-101",
+            "docs": "https://geblang.davegebler.com"
+        });
+    }));
+
+    router.get(app, "/health", helpers.wrap(func(dict<string, any> request): dict<string, any> {
+        return wh.jsonResponse({"status": "ok"});
+    }));
+}

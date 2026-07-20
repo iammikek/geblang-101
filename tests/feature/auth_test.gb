@@ -1,0 +1,73 @@
+import test;
+import support.testkit as h;
+
+class AuthTest extends test.Test {
+    @test
+    func registerCreatesUser(): void {
+        let application = h.setupApp();
+        let response = h.postJson(application, "/auth/register", {
+            "email": "new@example.com",
+            "password": "secret123"
+        });
+        this.assertEquals(201, h.statusOf(response));
+        dict<string, any> body = h.bodyOf(response);
+        this.assertEquals("new@example.com", body["email"]);
+        this.assertTrue(body.hasKey("id"));
+    }
+
+    @test
+    func registerDuplicateEmailConflicts(): void {
+        let application = h.setupApp();
+        dict<string, any> payload = {
+            "email": "dup@example.com",
+            "password": "secret123"
+        };
+        this.assertEquals(201, h.statusOf(h.postJson(application, "/auth/register", payload)));
+        let response = h.postJson(application, "/auth/register", payload);
+        this.assertEquals(409, h.statusOf(response));
+        this.assertEquals("USER_EMAIL_EXISTS", h.bodyOf(response)["code"]);
+    }
+
+    @test
+    func loginReturnsBearerToken(): void {
+        let application = h.setupApp();
+        h.postJson(application, "/auth/register", {
+            "email": "login@example.com",
+            "password": "secret123"
+        });
+        let response = h.postForm(
+            application,
+            "/auth/login",
+            "username=login%40example.com&password=secret123"
+        );
+        this.assertEquals(200, h.statusOf(response));
+        dict<string, any> body = h.bodyOf(response);
+        this.assertEquals("bearer", body["token_type"]);
+        this.assertTrue((body["access_token"] as string).length() > 10);
+    }
+
+    @test
+    func loginRejectsBadPassword(): void {
+        let application = h.setupApp();
+        h.postJson(application, "/auth/register", {
+            "email": "bad@example.com",
+            "password": "secret123"
+        });
+        let response = h.postForm(
+            application,
+            "/auth/login",
+            "username=bad%40example.com&password=wrongpass"
+        );
+        this.assertEquals(401, h.statusOf(response));
+    }
+
+    @test
+    func meRequiresAuth(): void {
+        let application = h.setupApp();
+        this.assertEquals(401, h.statusOf(h.get(application, "/auth/me")));
+        string token = h.authToken(application);
+        let response = h.getAuth(application, "/auth/me", token);
+        this.assertEquals(200, h.statusOf(response));
+        this.assertEquals("test@example.com", h.bodyOf(response)["email"]);
+    }
+}

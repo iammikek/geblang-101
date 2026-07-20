@@ -1,0 +1,110 @@
+import db;
+import io;
+import pathlib;
+import settings;
+
+any _conn = null;
+bool _hasConn = false;
+string _path = "";
+
+func ensureParentDir(string dbPath): void {
+    if (dbPath == ":memory:") {
+        return;
+    }
+    let dirPath = pathlib.of(dbPath).parent();
+    if (dirPath.exists()) {
+        return;
+    }
+    string raw = dirPath.toString();
+    list<string> parts = raw.split("/");
+    string acc = "";
+    bool absolute = raw.startsWith("/");
+    for (part in parts) {
+        string piece = part as string;
+        if (piece.isEmpty()) {
+            continue;
+        }
+        if (acc.isEmpty()) {
+            if (absolute) {
+                acc = "/" + piece;
+            } else {
+                acc = piece;
+            }
+        } else {
+            acc = acc + "/" + piece;
+        }
+        let cur = pathlib.of(acc);
+        if (!cur.exists()) {
+            io.mkdir(acc, 493);
+        }
+    }
+}
+
+## Opens (or reopens) the SQLite connection for the given path.
+export func configure(string dbPath): void {
+    if (_hasConn) {
+        (_conn as db.Connection).close();
+        _hasConn = false;
+    }
+    _path = dbPath;
+    ensureParentDir(dbPath);
+    _conn = db.Connection({
+        "driver": "sqlite",
+        "path": dbPath,
+        "foreignKeys": true
+    });
+    _hasConn = true;
+}
+
+## Returns the active connection, configuring from settings if needed.
+export func connection(): db.Connection {
+    if (!_hasConn) {
+        configure(settings.current().dbPath);
+    }
+    return _conn as db.Connection;
+}
+
+## Applies the items/categories/users schema.
+export func migrate(): void {
+    let conn = connection();
+    conn.exec("""
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email TEXT NOT NULL UNIQUE,
+    password TEXT NOT NULL
+)
+""");
+    conn.exec("""
+CREATE TABLE IF NOT EXISTS categories (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    description TEXT
+)
+""");
+    conn.exec("""
+CREATE TABLE IF NOT EXISTS items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    description TEXT,
+    price TEXT NOT NULL,
+    category_id INTEGER,
+    FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL
+)
+""");
+}
+
+## Clears all rows (used by feature tests).
+export func resetTables(): void {
+    let conn = connection();
+    conn.exec("DELETE FROM items");
+    conn.exec("DELETE FROM categories");
+    conn.exec("DELETE FROM users");
+}
+
+## Closes the connection pool.
+export func close(): void {
+    if (_hasConn) {
+        (_conn as db.Connection).close();
+        _hasConn = false;
+    }
+}

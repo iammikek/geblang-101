@@ -1,0 +1,60 @@
+import sys;
+
+## Reads an environment variable or returns fallback when unset/empty.
+export func envOr(string name, string fallback): string {
+    let value = sys.getenv(name);
+    if (value == null) {
+        return fallback;
+    }
+    string text = value as string;
+    if (text.isEmpty()) {
+        return fallback;
+    }
+    return text;
+}
+
+## Application configuration loaded from the environment.
+export class Config {
+    string host;
+    int port;
+    string dbPath;
+    string jwtSecret;
+    string corsOrigins;
+
+    func Config(string host, int port, string dbPath, string jwtSecret, string corsOrigins) {
+        this.host = host;
+        this.port = port;
+        this.dbPath = dbPath;
+        this.jwtSecret = jwtSecret;
+        this.corsOrigins = corsOrigins;
+    }
+}
+
+## Builds Config from environment variables with flask-101-style defaults.
+export func fromEnv(): Config {
+    string host = envOr("APP_HOST", "127.0.0.1");
+    string portText = envOr("PORT", envOr("X_LISTEN", "8013"));
+    int port = portText as int;
+    string dbPath = envOr("DB_DATABASE", "database/database.sqlite");
+    string jwtSecret = envOr("JWT_SECRET", "change-me-in-production");
+    string corsOrigins = envOr(
+        "CORS_ORIGINS",
+        "http://127.0.0.1:5173,http://localhost:5173,http://127.0.0.1:5174,http://localhost:5174"
+    );
+    return Config(host, port, dbPath, jwtSecret, corsOrigins);
+}
+
+any _current = null;
+
+## Stores the active config for request handlers and services.
+export func setCurrent(Config cfg): void {
+    _current = cfg;
+}
+
+## Returns the active config, loading from the environment on first use.
+export func current(): Config {
+    if (_current == null) {
+        _current = fromEnv();
+    }
+    return _current as Config;
+}

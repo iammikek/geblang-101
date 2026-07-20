@@ -1,0 +1,40 @@
+import test;
+import support.testkit as h;
+
+class ItemsListTest extends test.Test {
+    @test
+    func emptyList(): void {
+        let application = h.setupApp();
+        let response = h.get(application, "/items");
+        this.assertEquals(200, h.statusOf(response));
+        dict<string, any> body = h.bodyOf(response);
+        this.assertEquals(0, body["total"]);
+        this.assertEquals(0, (body["items"] as list<any>).length());
+        this.assertEquals(0, body["skip"]);
+        this.assertEquals(10, body["limit"]);
+    }
+
+    @test
+    func pagination(): void {
+        let application = h.setupApp();
+        string token = h.authToken(application);
+        h.postJsonAuth(application, "/items", {"name": "A", "price": 1.0}, token);
+        h.postJsonAuth(application, "/items", {"name": "B", "price": 2.0}, token);
+        h.postJsonAuth(application, "/items", {"name": "C", "price": 3.0}, token);
+
+        let response = h.get(application, "/items?skip=1&limit=2");
+        this.assertEquals(200, h.statusOf(response));
+        dict<string, any> body = h.bodyOf(response);
+        this.assertEquals(3, body["total"]);
+        this.assertEquals(1, body["skip"]);
+        this.assertEquals(2, body["limit"]);
+        this.assertEquals(2, (body["items"] as list<any>).length());
+    }
+
+    @test
+    func limitOverMaxIsRejected(): void {
+        let application = h.setupApp();
+        let response = h.get(application, "/items?limit=101");
+        this.assertEquals(422, h.statusOf(response));
+    }
+}

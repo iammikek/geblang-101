@@ -1,0 +1,70 @@
+import test;
+import support.testkit as h;
+
+class ItemsMutateTest extends test.Test {
+    @test
+    func createRequiresAuth(): void {
+        let application = h.setupApp();
+        let response = h.postJson(application, "/items", {"name": "Widget", "price": 9.99});
+        this.assertEquals(401, h.statusOf(response));
+    }
+
+    @test
+    func createGetDelete(): void {
+        let application = h.setupApp();
+        string token = h.authToken(application);
+        let created = h.postJsonAuth(application, "/items", {
+            "name": "Widget",
+            "price": 9.99,
+            "description": "A thing"
+        }, token);
+        this.assertEquals(201, h.statusOf(created));
+        dict<string, any> item = h.bodyOf(created);
+        int id = item["id"] as int;
+        this.assertEquals("Widget", item["name"]);
+        this.assertEquals(9.99 as float, item["price"] as float);
+
+        let missing = h.get(application, "/items/99");
+        this.assertEquals(404, h.statusOf(missing));
+        this.assertEquals("ITEM_NOT_FOUND", h.bodyOf(missing)["code"]);
+
+        let shown = h.get(application, "/items/" + (id as string));
+        this.assertEquals(200, h.statusOf(shown));
+
+        let deleted = h.deleteAuth(application, "/items/" + (id as string), token);
+        this.assertEquals(204, h.statusOf(deleted));
+        this.assertEquals(404, h.statusOf(h.get(application, "/items/" + (id as string))));
+    }
+
+    @test
+    func statsSummary(): void {
+        let application = h.setupApp();
+        string token = h.authToken(application);
+        let cat = h.postJsonAuth(application, "/categories", {"name": "Gadgets"}, token);
+        int categoryId = h.bodyOf(cat)["id"] as int;
+        h.postJsonAuth(application, "/items", {
+            "name": "Phone",
+            "price": 10.0,
+            "category_id": categoryId
+        }, token);
+        h.postJsonAuth(application, "/items", {"name": "Spare", "price": 20.0}, token);
+
+        let response = h.get(application, "/items/stats/summary");
+        this.assertEquals(200, h.statusOf(response));
+        dict<string, any> body = h.bodyOf(response);
+        this.assertEquals(2, body["total_items"]);
+        this.assertEquals(1, body["uncategorized_count"]);
+        this.assertEquals(15.0 as float, body["average_price"] as float);
+    }
+
+    @test
+    func filterByName(): void {
+        let application = h.setupApp();
+        string token = h.authToken(application);
+        h.postJsonAuth(application, "/items", {"name": "Red Apple", "price": 1.5}, token);
+        h.postJsonAuth(application, "/items", {"name": "Blue Ball", "price": 2.5}, token);
+        let response = h.get(application, "/items?name_contains=apple");
+        this.assertEquals(200, h.statusOf(response));
+        this.assertEquals(1, h.bodyOf(response)["total"]);
+    }
+}

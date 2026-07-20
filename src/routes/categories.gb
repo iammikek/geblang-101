@@ -1,0 +1,82 @@
+import web.http as wh;
+import web.router as router;
+import security;
+import services.category as categories;
+import support.http_helpers as helpers;
+import validators;
+
+## Registers /categories routes.
+export func register(any app): void {
+    router.get(app, "/categories", helpers.wrap(func(dict<string, any> request): dict<string, any> {
+        string skipText = helpers.query(request, "skip");
+        string limitText = helpers.query(request, "limit");
+        any skipVal = 0;
+        any limitVal = 10;
+        if (!skipText.isEmpty()) {
+            skipVal = skipText;
+        }
+        if (!limitText.isEmpty()) {
+            limitVal = limitText;
+        }
+        dict<string, any> raw = {
+            "skip": skipVal,
+            "limit": limitVal
+        };
+        validators.validateOrRaise(raw, {
+            "skip": ["integer", "min:0"],
+            "limit": ["integer", "min:1", "max:100"]
+        });
+        int skip = 0;
+        int limit = 10;
+        if (!skipText.isEmpty()) {
+            skip = skipText as int;
+        }
+        if (!limitText.isEmpty()) {
+            limit = limitText as int;
+        }
+        if (skip < 0) {
+            skip = 0;
+        }
+        if (limit < 1) {
+            limit = 1;
+        }
+        if (limit > 100) {
+            limit = 100;
+        }
+        return wh.jsonResponse(categories.listCategories(skip, limit));
+    }));
+
+    router.get(app, "/categories/:id", helpers.wrap(func(dict<string, any> request): dict<string, any> {
+        int id = helpers.paramInt(request, "id");
+        return wh.jsonResponse(categories.getById(id));
+    }));
+
+    router.post(app, "/categories", helpers.wrap(func(dict<string, any> request): dict<string, any> {
+        security.requireAuth(request);
+        dict<string, any> data = helpers.jsonBody(request);
+        validators.validateOrRaise(data, {
+            "name": ["required", "string", "min:1", "max:255"],
+            "description": ["nullable", "string"]
+        });
+        string name = (data["name"] as string).trim();
+        any description = null;
+        if (data.hasKey("description") && data["description"] != null && data["description"] != "") {
+            description = data["description"] as string;
+        }
+        return wh.jsonCreated(categories.create(name, description));
+    }));
+
+    router.patch(app, "/categories/:id", helpers.wrap(func(dict<string, any> request): dict<string, any> {
+        security.requireAuth(request);
+        int id = helpers.paramInt(request, "id");
+        dict<string, any> data = helpers.jsonBody(request);
+        return wh.jsonResponse(categories.update(id, data));
+    }));
+
+    router.delete(app, "/categories/:id", helpers.wrap(func(dict<string, any> request): dict<string, any> {
+        security.requireAuth(request);
+        int id = helpers.paramInt(request, "id");
+        categories.delete(id);
+        return wh.noContent();
+    }));
+}

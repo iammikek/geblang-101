@@ -1,0 +1,81 @@
+import crypt;
+import datetime;
+import web.http as wh;
+import settings;
+import database;
+import domain;
+import serializers;
+
+## Hashes a password with the PHP-compatible passwordHash helper.
+export func hashPassword(string password): string {
+    return crypt.passwordHash(password);
+}
+
+## Verifies a password against a stored hash.
+export func verifyPassword(string password, string hashed): bool {
+    return crypt.passwordVerify(password, hashed);
+}
+
+## Creates a 1-hour HS256 JWT for the given user.
+export func createToken(dict<string, any> user): string {
+    int now = datetime.nowUnix();
+    return crypt.jwtSign({
+        "sub": (user["id"] as int) as string,
+        "email": user["email"] as string,
+        "iat": now,
+        "exp": now + 3600
+    }, settings.current().jwtSecret, {"alg": "HS256"});
+}
+
+## Verifies a JWT and returns {sub, email}, or null when invalid.
+export func decodeToken(string token): ?dict<string, any> {
+    let payload = crypt.jwtVerify(token, settings.current().jwtSecret, {"allowedAlgs": ["HS256"]});
+    if (payload == null) {
+        return null;
+    }
+    dict<string, any> claims = payload as dict<string, any>;
+    if (!claims.hasKey("sub") || !claims.hasKey("email")) {
+        return null;
+    }
+    return {
+        "sub": (claims["sub"] as string) as int,
+        "email": claims["email"] as string
+    };
+}
+
+## Extracts the Bearer token from Authorization, or null.
+export func getBearerToken(dict<string, any> request): ?string {
+    let req = wh.requestObject(request);
+    string header = req.header("Authorization");
+    if (!header.startsWith("Bearer ")) {
+        return null;
+    }
+    string token = header.slice(7).trim();
+    if (token.isEmpty()) {
+        return null;
+    }
+    return token;
+}
+
+## Resolves the authenticated user or throws UnauthorizedError.
+export func requireAuth(dict<string, any> request): dict<string, any> {
+    let token = getBearerToken(request);
+    if (token == null) {
+        throw domain.UnauthorizedError("Unauthorized");
+    }
+
+    let payload = decodeToken(token as string);
+    if (payload == null) {
+        throw domain.UnauthorizedError("Unauthorized");
+    }
+
+    dict<string, any> claims = payload as dict<string, any>;
+    int userId = claims["sub"] as int;
+    let rows = database.connection().query("SELECT id, email FROM users WHERE id = ?", userId);
+    defer rows.close();
+    let row = rows.first();
+    if (row == null) {
+        throw domain.UnauthorizedError("Unauthorized");
+    }
+    return serializers.user(row as dict<string, any>);
+}

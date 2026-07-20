@@ -1,0 +1,156 @@
+import web.http as wh;
+import web.router as router;
+import security;
+import services.item as items;
+import support.http_helpers as helpers;
+import validators;
+
+func parseListQuery(dict<string, any> request): dict<string, any> {
+    string skipText = helpers.query(request, "skip");
+    string limitText = helpers.query(request, "limit");
+    any skipVal = 0;
+    any limitVal = 10;
+    if (!skipText.isEmpty()) {
+        skipVal = skipText;
+    }
+    if (!limitText.isEmpty()) {
+        limitVal = limitText;
+    }
+
+    any minPrice = null;
+    any maxPrice = null;
+    any categoryId = null;
+    any nameContains = null;
+
+    string minPriceText = helpers.query(request, "min_price");
+    string maxPriceText = helpers.query(request, "max_price");
+    string categoryIdText = helpers.query(request, "category_id");
+    string nameContainsText = helpers.query(request, "name_contains");
+
+    if (!minPriceText.isEmpty()) {
+        minPrice = minPriceText;
+    }
+    if (!maxPriceText.isEmpty()) {
+        maxPrice = maxPriceText;
+    }
+    if (!categoryIdText.isEmpty()) {
+        categoryId = categoryIdText;
+    }
+    if (!nameContainsText.isEmpty()) {
+        nameContains = nameContainsText;
+    }
+
+    dict<string, any> raw = {
+        "skip": skipVal,
+        "limit": limitVal,
+        "min_price": minPrice,
+        "max_price": maxPrice,
+        "category_id": categoryId,
+        "name_contains": nameContains
+    };
+    validators.validateOrRaise(raw, {
+        "skip": ["integer", "min:0"],
+        "limit": ["integer", "min:1", "max:100"],
+        "min_price": ["nullable", "numeric", "gt:0"],
+        "max_price": ["nullable", "numeric", "gt:0"],
+        "category_id": ["nullable", "integer", "min:1"],
+        "name_contains": ["nullable", "string", "min:1", "max:255"]
+    });
+
+    int skip = 0;
+    int limit = 10;
+    if (!skipText.isEmpty()) {
+        skip = skipText as int;
+    }
+    if (!limitText.isEmpty()) {
+        limit = limitText as int;
+    }
+    if (skip < 0) {
+        skip = 0;
+    }
+    if (limit < 1) {
+        limit = 1;
+    }
+    if (limit > 100) {
+        limit = 100;
+    }
+
+    dict<string, any> filters = {
+        "min_price": null,
+        "max_price": null,
+        "category_id": null,
+        "name_contains": null
+    };
+    if (minPrice != null) {
+        filters["min_price"] = minPrice as decimal;
+    }
+    if (maxPrice != null) {
+        filters["max_price"] = maxPrice as decimal;
+    }
+    if (categoryId != null) {
+        filters["category_id"] = categoryId as int;
+    }
+    if (nameContains != null) {
+        filters["name_contains"] = nameContains as string;
+    }
+
+    return {"skip": skip, "limit": limit, "filters": filters};
+}
+
+## Registers /items routes.
+export func register(any app): void {
+    router.get(app, "/items/stats/summary", helpers.wrap(func(dict<string, any> request): dict<string, any> {
+        return wh.jsonResponse(items.getStats());
+    }));
+
+    router.get(app, "/items", helpers.wrap(func(dict<string, any> request): dict<string, any> {
+        dict<string, any> parsed = parseListQuery(request);
+        return wh.jsonResponse(items.listItems(
+            parsed["skip"] as int,
+            parsed["limit"] as int,
+            parsed["filters"] as dict<string, any>
+        ));
+    }));
+
+    router.get(app, "/items/:id", helpers.wrap(func(dict<string, any> request): dict<string, any> {
+        int id = helpers.paramInt(request, "id");
+        return wh.jsonResponse(items.getById(id));
+    }));
+
+    router.post(app, "/items", helpers.wrap(func(dict<string, any> request): dict<string, any> {
+        security.requireAuth(request);
+        dict<string, any> data = helpers.jsonBody(request);
+        validators.validateOrRaise(data, {
+            "name": ["required", "string", "min:1", "max:255"],
+            "description": ["nullable", "string"],
+            "price": ["required", "numeric", "gt:0"],
+            "category_id": ["nullable", "integer", "min:1"]
+        });
+
+        string name = (data["name"] as string).trim();
+        any description = null;
+        if (data.hasKey("description") && data["description"] != null && data["description"] != "") {
+            description = data["description"] as string;
+        }
+        any categoryId = null;
+        if (data.hasKey("category_id") && data["category_id"] != null && data["category_id"] != "") {
+            categoryId = data["category_id"] as int;
+        }
+
+        return wh.jsonCreated(items.create(name, description, data["price"], categoryId));
+    }));
+
+    router.patch(app, "/items/:id", helpers.wrap(func(dict<string, any> request): dict<string, any> {
+        security.requireAuth(request);
+        int id = helpers.paramInt(request, "id");
+        dict<string, any> data = helpers.jsonBody(request);
+        return wh.jsonResponse(items.update(id, data));
+    }));
+
+    router.delete(app, "/items/:id", helpers.wrap(func(dict<string, any> request): dict<string, any> {
+        security.requireAuth(request);
+        int id = helpers.paramInt(request, "id");
+        items.delete(id);
+        return wh.noContent();
+    }));
+}

@@ -1,0 +1,83 @@
+import web.http as wh;
+import web.router as router;
+import domain;
+import security;
+import services.user as users;
+import support.http_helpers as helpers;
+import validators;
+
+## Registers /auth routes.
+export func register(any app): void {
+    router.post(app, "/auth/register", helpers.wrap(func(dict<string, any> request): dict<string, any> {
+        dict<string, any> data = helpers.jsonBody(request);
+        validators.validateOrRaise(data, {
+            "email": ["required", "email", "min:5", "max:255"],
+            "password": ["required", "string", "min:8", "max:128"]
+        });
+        string email = (data["email"] as string).trim();
+        string password = data["password"] as string;
+        dict<string, any> user = users.create(email, password);
+        return wh.jsonCreated(user);
+    }));
+
+    router.post(app, "/auth/login", helpers.wrap(func(dict<string, any> request): dict<string, any> {
+        dict<string, any> form = helpers.formBody(request);
+        dict<string, any> body = helpers.jsonBody(request);
+
+        string username = "";
+        string password = "";
+
+        if (form.hasKey("username") && form["username"] != null) {
+            username = form["username"] as string;
+        } else if (form.hasKey("email") && form["email"] != null) {
+            username = form["email"] as string;
+        } else if (body.hasKey("username") && body["username"] != null) {
+            username = body["username"] as string;
+        } else if (body.hasKey("email") && body["email"] != null) {
+            username = body["email"] as string;
+        }
+
+        if (form.hasKey("password") && form["password"] != null) {
+            password = form["password"] as string;
+        } else if (body.hasKey("password") && body["password"] != null) {
+            password = body["password"] as string;
+        }
+
+        if (username.isEmpty()) {
+            username = helpers.query(request, "username");
+            if (username.isEmpty()) {
+                username = helpers.query(request, "email");
+            }
+        }
+        if (password.isEmpty()) {
+            password = helpers.query(request, "password");
+        }
+
+        if (username.isEmpty() || password.isEmpty()) {
+            throw domain.UnauthorizedError("Incorrect email or password");
+        }
+
+        let user = users.authenticate(username, password);
+        if (user == null) {
+            return wh.withHeader(
+                wh.jsonStatus({"detail": "Incorrect email or password"}, 401),
+                "WWW-Authenticate",
+                "Bearer"
+            );
+        }
+
+        string token = security.createToken(user as dict<string, any>);
+        return wh.jsonResponse({
+            "access_token": token,
+            "token_type": "bearer"
+        });
+    }));
+
+    router.get(app, "/auth/me", helpers.wrap(func(dict<string, any> request): dict<string, any> {
+        dict<string, any> user = security.requireAuth(request);
+        return wh.jsonResponse({
+            "id": user["id"],
+            "email": user["email"]
+        });
+    }));
+}

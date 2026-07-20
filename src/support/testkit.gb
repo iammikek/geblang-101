@@ -1,0 +1,111 @@
+import json;
+import web.http as wh;
+import web.router as router;
+import app;
+import database;
+import settings;
+import support.http_helpers as helpers;
+
+## Configures an isolated in-memory database for feature tests.
+export func setupApp(): any {
+    let cfg = settings.Config(
+        "127.0.0.1",
+        8013,
+        ":memory:",
+        "test-jwt-secret-for-geblang-101",
+        "http://127.0.0.1:5173"
+    );
+    settings.setCurrent(cfg);
+    database.configure(":memory:");
+    database.migrate();
+    database.resetTables();
+    return app.createApp();
+}
+
+## Dispatches a request dictionary through the router.
+export func dispatch(any application, string method, string path, string body, dict<string, any> headers): dict<string, any> {
+    dict<string, any> request = wh.requestWithBody(method, path, body);
+    request["headers"] = headers;
+    return router.handle(application, request);
+}
+
+export func get(any application, string path): dict<string, any> {
+    return dispatch(application, "GET", path, "", {});
+}
+
+export func getAuth(any application, string path, string token): dict<string, any> {
+    return dispatch(application, "GET", path, "", {"Authorization": "Bearer " + token});
+}
+
+export func postJson(any application, string path, dict<string, any> payload): dict<string, any> {
+    return dispatch(
+        application,
+        "POST",
+        path,
+        json.stringify(payload),
+        {"Content-Type": "application/json"}
+    );
+}
+
+export func postJsonAuth(any application, string path, dict<string, any> payload, string token): dict<string, any> {
+    return dispatch(
+        application,
+        "POST",
+        path,
+        json.stringify(payload),
+        {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + token
+        }
+    );
+}
+
+export func patchJsonAuth(any application, string path, dict<string, any> payload, string token): dict<string, any> {
+    return dispatch(
+        application,
+        "PATCH",
+        path,
+        json.stringify(payload),
+        {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + token
+        }
+    );
+}
+
+export func deleteAuth(any application, string path, string token): dict<string, any> {
+    return dispatch(application, "DELETE", path, "", {"Authorization": "Bearer " + token});
+}
+
+export func postForm(any application, string path, string body): dict<string, any> {
+    return dispatch(
+        application,
+        "POST",
+        path,
+        body,
+        {"Content-Type": "application/x-www-form-urlencoded"}
+    );
+}
+
+## Registers a user and returns a Bearer access token.
+export func authToken(any application): string {
+    postJson(application, "/auth/register", {
+        "email": "test@example.com",
+        "password": "secret123"
+    });
+    let response = postForm(
+        application,
+        "/auth/login",
+        "username=test%40example.com&password=secret123"
+    );
+    dict<string, any> body = helpers.parseBody(response);
+    return body["access_token"] as string;
+}
+
+export func statusOf(dict<string, any> response): int {
+    return response["status"] as int;
+}
+
+export func bodyOf(dict<string, any> response): dict<string, any> {
+    return helpers.parseBody(response);
+}

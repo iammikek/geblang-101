@@ -1,0 +1,207 @@
+import database;
+import domain;
+import serializers;
+import services.category as categories;
+
+string ITEM_SELECT = """
+SELECT i.*, c.id AS cat_id, c.name AS cat_name, c.description AS cat_description
+FROM items i
+LEFT JOIN categories c ON c.id = i.category_id
+""";
+
+func formatPrice(any price): string {
+    return (price as decimal).format(2);
+}
+
+func buildFilterClause(dict<string, any> filters): dict<string, any> {
+    list<string> clauses = [];
+    list<any> params = [];
+
+    if (filters.hasKey("min_price") && filters["min_price"] != null) {
+        clauses.append("CAST(i.price AS REAL) >= ?");
+        params.append(filters["min_price"] as decimal);
+    }
+    if (filters.hasKey("max_price") && filters["max_price"] != null) {
+        clauses.append("CAST(i.price AS REAL) <= ?");
+        params.append(filters["max_price"] as decimal);
+    }
+    if (filters.hasKey("category_id") && filters["category_id"] != null) {
+        clauses.append("i.category_id = ?");
+        params.append(filters["category_id"] as int);
+    }
+    if (filters.hasKey("name_contains") && filters["name_contains"] != null) {
+        string needle = (filters["name_contains"] as string).lower();
+        clauses.append("LOWER(i.name) LIKE ?");
+        params.append("%" + needle + "%");
+    }
+
+    string where = "";
+    if (clauses.length() > 0) {
+        where = " WHERE " + clauses.join(" AND ");
+    }
+    return {"where": where, "params": params};
+}
+
+## Lists items with filters and pagination.
+export func listItems(int skip, int limit, dict<string, any> filters): dict<string, any> {
+    let built = buildFilterClause(filters);
+    string where = built["where"] as string;
+    list<any> params = built["params"] as list<any>;
+
+    let conn = database.connection();
+    let countRows = conn.query("SELECT COUNT(*) AS count FROM items i" + where, params);
+    defer countRows.close();
+    int total = (countRows.first() as dict<string, any>)["count"] as int;
+
+    list<any> queryParams = [];
+    for (p in params) {
+        queryParams.append(p);
+    }
+    queryParams.append(limit);
+    queryParams.append(skip);
+
+    let rows = conn.query(ITEM_SELECT + where + " ORDER BY i.id LIMIT ? OFFSET ?", queryParams);
+    defer rows.close();
+    list<any> items = [];
+    for (row in rows) {
+        items.append(serializers.item(row as dict<string, any>));
+    }
+    return serializers.paginate(items, total, skip, limit);
+}
+
+## Loads an item or throws ItemNotFoundError.
+export func getById(int itemId): dict<string, any> {
+    let rows = database.connection().query(ITEM_SELECT + " WHERE i.id = ?", itemId);
+    defer rows.close();
+    let row = rows.first();
+    if (row == null) {
+        throw domain.ItemNotFoundError(itemId);
+    }
+    return serializers.item(row as dict<string, any>);
+}
+
+## Creates an item.
+export func create(string name, any description, any price, any categoryId): dict<string, any> {
+    if (categoryId != null) {
+        categories.getById(categoryId as int);
+    }
+    string priceText = formatPrice(price);
+    let result = database.connection().exec(
+        "INSERT INTO items (name, description, price, category_id) VALUES (?, ?, ?, ?)",
+        name,
+        description,
+        priceText,
+        categoryId
+    );
+    return getById(result["lastInsertId"] as int);
+}
+
+## Updates an item with partial fields.
+export func update(int itemId, dict<string, any> data): dict<string, any> {
+    dict<string, any> current = getById(itemId);
+    string name = current["name"] as string;
+    any description = null;
+    if (current.hasKey("description")) {
+        description = current["description"];
+    }
+    string price = formatPrice(current["price"]);
+
+    if (data.hasKey("name") && data["name"] != null) {
+        name = data["name"] as string;
+    }
+    if (data.hasKey("description")) {
+        description = data["description"];
+    }
+    if (data.hasKey("price") && data["price"] != null) {
+        price = formatPrice(data["price"]);
+    }
+
+    any boundCategoryId = null;
+    if (data.hasKey("category_id")) {
+        if (data["category_id"] != null) {
+            int cid = data["category_id"] as int;
+            categories.getById(cid);
+            boundCategoryId = cid;
+        }
+    } else if (current.hasKey("category_id") && current["category_id"] != null) {
+        boundCategoryId = current["category_id"];
+    }
+
+    database.connection().exec(
+        "UPDATE items SET name = ?, description = ?, price = ?, category_id = ? WHERE id = ?",
+        name,
+        description,
+        price,
+        boundCategoryId,
+        itemId
+    );
+    return getById(itemId);
+}
+
+## Deletes an item.
+export func delete(int itemId): void {
+    getById(itemId);
+    database.connection().exec("DELETE FROM items WHERE id = ?", itemId);
+}
+
+## Aggregate item statistics.
+export func getStats(): dict<string, any> {
+    let conn = database.connection();
+    let totalRows = conn.query("SELECT COUNT(*) AS count FROM items");
+    defer totalRows.close();
+    int total = (totalRows.first() as dict<string, any>)["count"] as int;
+
+    if (total == 0) {
+        return {
+            "total_items": 0,
+            "average_price": 0.0,
+            "min_price": null,
+            "max_price": null,
+            "uncategorized_count": 0,
+            "by_category": []
+        };
+    }
+
+    let aggregateRows = conn.query("""
+SELECT AVG(CAST(price AS REAL)) AS avg_price,
+       MIN(CAST(price AS REAL)) AS min_price,
+       MAX(CAST(price AS REAL)) AS max_price
+FROM items
+""");
+    defer aggregateRows.close();
+    dict<string, any> aggregate = aggregateRows.first() as dict<string, any>;
+
+    let uncatRows = conn.query("SELECT COUNT(*) AS count FROM items WHERE category_id IS NULL");
+    defer uncatRows.close();
+    int uncategorized = (uncatRows.first() as dict<string, any>)["count"] as int;
+
+    let categoryRows = conn.query("""
+SELECT categories.id AS category_id, categories.name AS category_name,
+       COUNT(items.id) AS item_count, AVG(CAST(items.price AS REAL)) AS average_price
+FROM items
+INNER JOIN categories ON categories.id = items.category_id
+GROUP BY categories.id, categories.name
+ORDER BY categories.name
+""");
+    defer categoryRows.close();
+
+    list<any> byCategory = [];
+    for (rowAny in categoryRows) {
+        dict<string, any> row = rowAny as dict<string, any>;
+        byCategory.append({
+            "category_id": row["category_id"] as int,
+            "category_name": row["category_name"] as string,
+            "item_count": row["item_count"] as int,
+            "average_price": ((row["average_price"] as decimal).format(2) as decimal) as float
+        });
+    }
+
+    return {
+        "total_items": total,
+        "average_price": ((aggregate["avg_price"] as decimal).format(2) as decimal) as float,
+        "min_price": ((aggregate["min_price"] as decimal).format(2) as decimal) as float,
+        "max_price": ((aggregate["max_price"] as decimal).format(2) as decimal) as float,
+        "uncategorized_count": uncategorized,
+        "by_category": byCategory
+    };
+}

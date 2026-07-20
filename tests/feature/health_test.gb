@@ -1,0 +1,20 @@
+import test;
+import support.testkit as h;
+
+class HealthTest extends test.Test {
+    @test
+    func healthOk(): void {
+        let application = h.setupApp();
+        let response = h.get(application, "/health");
+        this.assertEquals(200, h.statusOf(response));
+        this.assertEquals("ok", h.bodyOf(response)["status"]);
+    }
+
+    @test
+    func rootMessage(): void {
+        let application = h.setupApp();
+        let response = h.get(application, "/");
+        this.assertEquals(200, h.statusOf(response));
+        this.assertTrue((h.bodyOf(response)["message"] as string).contains("geblang-101"));
+    }
+}

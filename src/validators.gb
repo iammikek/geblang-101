@@ -1,0 +1,185 @@
+import domain;
+
+func label(string field): string {
+    return field.replace("_", " ");
+}
+
+func isBlank(any value): bool {
+    if (value == null) {
+        return true;
+    }
+    if (value instanceof string) {
+        return (value as string).isEmpty();
+    }
+    return false;
+}
+
+func asNumber(any value): any {
+    if (value == null) {
+        return null;
+    }
+    try {
+        return value as decimal;
+    } catch (Error e) {
+        return null;
+    }
+}
+
+func isDigits(string text): bool {
+    if (text.isEmpty()) {
+        return false;
+    }
+    string sample = text;
+    if (sample.startsWith("-")) {
+        sample = sample.slice(1);
+    }
+    if (sample.isEmpty()) {
+        return false;
+    }
+    return sample.matchesRegex("^[0-9]+$");
+}
+
+func checkRule(string field, any value, string rule): any {
+    string fieldLabel = label(field);
+
+    if (rule == "required") {
+        if (isBlank(value)) {
+            return "The " + fieldLabel + " field is required.";
+        }
+        return null;
+    }
+
+    if (rule.startsWith("min:")) {
+        int minimum = rule.slice(4) as int;
+        if (value instanceof string) {
+            if ((value as string).length() < minimum) {
+                return "The " + fieldLabel + " field must be at least " + (minimum as string) + " characters.";
+            }
+        }
+        let num = asNumber(value);
+        if (num != null && (num as decimal) < (minimum as decimal)) {
+            return "The " + fieldLabel + " field must be at least " + (minimum as string) + ".";
+        }
+        if (value instanceof string) {
+            string text = value as string;
+            if (isDigits(text)) {
+                int n = text as int;
+                if (n < minimum && (field == "skip" || field == "limit" || field == "category_id")) {
+                    return "The " + fieldLabel + " field must be at least " + (minimum as string) + ".";
+                }
+            }
+        }
+        return null;
+    }
+
+    if (rule.startsWith("max:")) {
+        int maximum = rule.slice(4) as int;
+        if (value instanceof string && (value as string).length() > maximum) {
+            return "The " + fieldLabel + " field must not be greater than " + (maximum as string) + " characters.";
+        }
+        let num = asNumber(value);
+        if (num != null && (num as decimal) > (maximum as decimal)) {
+            return "The " + fieldLabel + " field must not be greater than " + (maximum as string) + ".";
+        }
+        if (value instanceof string && field == "limit") {
+            string text = value as string;
+            if (isDigits(text)) {
+                int n = text as int;
+                if (n > maximum) {
+                    return "The " + fieldLabel + " field must not be greater than " + (maximum as string) + ".";
+                }
+            }
+        }
+        return null;
+    }
+
+    if (rule == "email") {
+        if (!(value instanceof string) || !(value as string).matchesRegex("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$")) {
+            return "The " + fieldLabel + " field must be a valid email address.";
+        }
+        return null;
+    }
+
+    if (rule == "string") {
+        if (value != null && !(value instanceof string)) {
+            return "The " + fieldLabel + " field must be a string.";
+        }
+        return null;
+    }
+
+    if (rule == "integer") {
+        if (isBlank(value)) {
+            return null;
+        }
+        try {
+            decimal d = value as decimal;
+            if (d != (d as int) as decimal) {
+                return "The " + fieldLabel + " field must be an integer.";
+            }
+        } catch (Error e) {
+            return "The " + fieldLabel + " field must be an integer.";
+        }
+        return null;
+    }
+
+    if (rule == "numeric") {
+        if (isBlank(value)) {
+            return null;
+        }
+        if (asNumber(value) == null) {
+            return "The " + fieldLabel + " field must be a number.";
+        }
+        return null;
+    }
+
+    if (rule == "gt:0") {
+        if (isBlank(value)) {
+            return null;
+        }
+        let num = asNumber(value);
+        if (num == null) {
+            return "The " + fieldLabel + " field must be a number.";
+        }
+        if ((num as decimal) <= 0) {
+            return "The " + fieldLabel + " field must be greater than 0.";
+        }
+        return null;
+    }
+
+    return null;
+}
+
+## Returns the first Laravel-style validation error message, or null.
+export func firstError(dict<string, any> data, dict<string, any> rules): any {
+    for (field, fieldRules in rules.items()) {
+        any value = null;
+        if (data.hasKey(field)) {
+            value = data[field];
+        }
+        list<any> ruleList = fieldRules as list<any>;
+        bool skipField = false;
+        for (ruleAny in ruleList) {
+            string rule = ruleAny as string;
+            if (rule == "nullable" && isBlank(value)) {
+                skipField = true;
+                break;
+            }
+            if (skipField) {
+                break;
+            }
+            let error = checkRule(field, value, rule);
+            if (error != null) {
+                return error;
+            }
+        }
+    }
+    return null;
+}
+
+## Validates data and throws ValidationError on the first failure.
+export func validateOrRaise(dict<string, any> data, dict<string, any> rules): void {
+    let error = firstError(data, rules);
+    if (error != null) {
+        throw domain.ValidationError(error as string);
+    }
+}

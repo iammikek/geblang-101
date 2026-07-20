@@ -1,0 +1,18 @@
+import http;
+import io;
+import web.router as router;
+import app;
+import settings;
+import database;
+
+let cfg = settings.fromEnv();
+settings.setCurrent(cfg);
+database.configure(cfg.dbPath);
+database.migrate();
+
+let application = app.createApp();
+string addr = cfg.host + ":" + (cfg.port as string);
+io.println("geblang-101 listening on http://" + addr);
+http.serve(addr, func(dict<string, any> request): dict<string, any> {
+    return router.handle(application, request);
+});

@@ -1,0 +1,23 @@
+import web.router as router;
+import web.middleware as middleware;
+import settings;
+import routes.auth as authRoutes;
+import routes.categories as categoryRoutes;
+import routes.health as healthRoutes;
+import routes.items as itemRoutes;
+
+## Builds the application router with CORS and all API routes.
+export func createApp(): any {
+    let cfg = settings.current();
+    let app = router.newRouter();
+    router.use(app, middleware.cors(
+        cfg.corsOrigins,
+        "GET, POST, PATCH, DELETE, OPTIONS",
+        "Authorization, Content-Type"
+    ));
+    healthRoutes.register(app);
+    authRoutes.register(app);
+    categoryRoutes.register(app);
+    itemRoutes.register(app);
+    return app;
+}

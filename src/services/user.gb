@@ -1,0 +1,51 @@
+import database;
+import domain;
+import security;
+import serializers;
+
+## Creates a user from email + password.
+export func create(string email, string password): dict<string, any> {
+    let conn = database.connection();
+    let existing = conn.query("SELECT id FROM users WHERE email = ?", email);
+    defer existing.close();
+    if (existing.first() != null) {
+        throw domain.UserEmailExistsError(email);
+    }
+
+    string hashed = security.hashPassword(password);
+    let result = conn.exec("INSERT INTO users (email, password) VALUES (?, ?)", email, hashed);
+    int id = result["lastInsertId"] as int;
+    return getById(id) as dict<string, any>;
+}
+
+## Authenticates email/password and returns {id, email} or null.
+export func authenticate(string email, string password): ?dict<string, any> {
+    let rows = database.connection().query(
+        "SELECT id, email, password FROM users WHERE email = ?",
+        email
+    );
+    defer rows.close();
+    let rowAny = rows.first();
+    if (rowAny == null) {
+        return null;
+    }
+    dict<string, any> row = rowAny as dict<string, any>;
+    if (!security.verifyPassword(password, row["password"] as string)) {
+        return null;
+    }
+    return {
+        "id": row["id"] as int,
+        "email": row["email"] as string
+    };
+}
+
+## Loads a user by id, or null when missing.
+export func getById(int userId): ?dict<string, any> {
+    let rows = database.connection().query("SELECT id, email FROM users WHERE id = ?", userId);
+    defer rows.close();
+    let row = rows.first();
+    if (row == null) {
+        return null;
+    }
+    return serializers.user(row as dict<string, any>);
+}
