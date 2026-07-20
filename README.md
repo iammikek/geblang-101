@@ -4,6 +4,15 @@ A minimal **API-only** [Geblang](https://geblang.davegebler.com) application in 
 
 **Audience:** Laravel / PHP / Python developers exploring Geblang (typed scripting on a Go runtime) using the same items/categories API.
 
+## What is Geblang?
+
+[Geblang](https://github.com/dwgebler/geblang) is a general-purpose scripting language implemented in Go, created by [Dave Gebler](https://github.com/dwgebler). It aims for PHP/Python-style ergonomics with static typing, first-class async, modules, and a batteries-included standard library (HTTP, routing, databases, JWT, testing, and more).
+
+- **Language & runtime:** [github.com/dwgebler/geblang](https://github.com/dwgebler/geblang)
+- **Reference manual:** [geblang.davegebler.com](https://geblang.davegebler.com)
+
+This *-101 repo is a learning API on top of that stack — not the language itself.
+
 ## API-only by design
 
 Other *-101 projects (Laravel, Django, Rails, Orchestr) include a `/shop` browser UI. **geblang-101 deliberately omits that layer** and focuses on a lean JSON REST API with `web.router`, a thin service layer, and SQLite via `db.Connection`.
