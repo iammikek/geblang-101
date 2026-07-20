@@ -7,8 +7,8 @@ import serializers;
 export func listCategories(int skip, int limit): dict<string, any> {
     let conn = database.connection();
     let countRows = conn.query("SELECT COUNT(*) AS count FROM categories");
-    defer countRows.close();
     int total = (countRows.first() as dict<string, any>)["count"] as int;
+    countRows.close();
 
     let rows = conn.query("SELECT * FROM categories ORDER BY id LIMIT ? OFFSET ?", limit, skip);
     defer rows.close();
@@ -31,7 +31,7 @@ export func getById(int categoryId): dict<string, any> {
 }
 
 func ensureUniqueName(string name, any excludeId): void {
-    any rows = null;
+    db.Rows rows;
     if (excludeId == null) {
         rows = database.connection().query("SELECT id FROM categories WHERE name = ?", name);
     } else {
@@ -41,8 +41,8 @@ func ensureUniqueName(string name, any excludeId): void {
             excludeId as int
         );
     }
-    defer (rows as db.Rows).close();
-    if ((rows as db.Rows).first() != null) {
+    defer rows.close();
+    if (rows.first() != null) {
         throw domain.CategoryNameExistsError(name);
     }
 }
@@ -62,20 +62,25 @@ export func create(string name, any description): dict<string, any> {
 export func update(int categoryId, dict<string, any> data): dict<string, any> {
     dict<string, any> current = getById(categoryId);
     string name = current["name"] as string;
-    any description = current["description"];
 
     if (data.hasKey("name") && data["name"] != null) {
         name = data["name"] as string;
         ensureUniqueName(name, categoryId);
     }
+
+    any boundDescription = null;
     if (data.hasKey("description")) {
-        description = data["description"];
+        if (data["description"] != null) {
+            boundDescription = data["description"];
+        }
+    } else if (current.hasKey("description") && current["description"] != null) {
+        boundDescription = current["description"];
     }
 
     database.connection().exec(
         "UPDATE categories SET name = ?, description = ? WHERE id = ?",
         name,
-        description,
+        boundDescription,
         categoryId
     );
     return getById(categoryId);
@@ -88,8 +93,8 @@ export func delete(int categoryId): void {
         "SELECT COUNT(*) AS count FROM items WHERE category_id = ?",
         categoryId
     );
-    defer rows.close();
     int inUse = (rows.first() as dict<string, any>)["count"] as int;
+    rows.close();
     if (inUse > 0) {
         throw domain.CategoryInUseError();
     }

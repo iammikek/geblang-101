@@ -50,8 +50,8 @@ export func listItems(int skip, int limit, dict<string, any> filters): dict<stri
 
     let conn = database.connection();
     let countRows = conn.query("SELECT COUNT(*) AS count FROM items i" + where, params);
-    defer countRows.close();
     int total = (countRows.first() as dict<string, any>)["count"] as int;
+    countRows.close();
 
     list<any> queryParams = [];
     for (p in params) {
@@ -148,8 +148,8 @@ export func delete(int itemId): void {
 export func getStats(): dict<string, any> {
     let conn = database.connection();
     let totalRows = conn.query("SELECT COUNT(*) AS count FROM items");
-    defer totalRows.close();
     int total = (totalRows.first() as dict<string, any>)["count"] as int;
+    totalRows.close();
 
     if (total == 0) {
         return {
@@ -168,12 +168,12 @@ SELECT AVG(CAST(price AS REAL)) AS avg_price,
        MAX(CAST(price AS REAL)) AS max_price
 FROM items
 """);
-    defer aggregateRows.close();
     dict<string, any> aggregate = aggregateRows.first() as dict<string, any>;
+    aggregateRows.close();
 
     let uncatRows = conn.query("SELECT COUNT(*) AS count FROM items WHERE category_id IS NULL");
-    defer uncatRows.close();
     int uncategorized = (uncatRows.first() as dict<string, any>)["count"] as int;
+    uncatRows.close();
 
     let categoryRows = conn.query("""
 SELECT categories.id AS category_id, categories.name AS category_name,

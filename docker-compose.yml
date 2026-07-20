@@ -1,0 +1,15 @@
+services:
+  api:
+    build: .
+    ports:
+      - "8013:8013"
+    environment:
+      - PORT=8013
+      - APP_HOST=0.0.0.0
+      - DB_DATABASE=/app/database/database.sqlite
+      - JWT_SECRET=docker-jwt-secret-for-geblang-101-dev
+    volumes:
+      - app-data:/app/database
+
+volumes:
+  app-data:

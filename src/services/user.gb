@@ -7,8 +7,9 @@ import serializers;
 export func create(string email, string password): dict<string, any> {
     let conn = database.connection();
     let existing = conn.query("SELECT id FROM users WHERE email = ?", email);
-    defer existing.close();
-    if (existing.first() != null) {
+    bool taken = existing.first() != null;
+    existing.close();
+    if (taken) {
         throw domain.UserEmailExistsError(email);
     }
 
