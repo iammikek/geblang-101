@@ -154,6 +154,7 @@ Query params on `GET /items`: `skip`, `limit`, `category_id`, `name_contains`, `
 | [flask-101](https://github.com/iammikek/flask-101) | 8011 | API-only | Flask, pytest |
 | [rails-101](https://github.com/iammikek/rails-101) | 8012 | Monolith | Rails + shop |
 | [**geblang-101**](https://github.com/iammikek/geblang-101) | **8013** | API-only | Geblang, SQLite |
+| [gebweb-101](https://github.com/iammikek/gebweb-101) | 8014 | API-only | Geblang + Gebweb |
 \* go-101 also uses port 8000 — run one backend at a time, or change port in config.
 
 ### Other clients
@@ -167,6 +168,7 @@ Query params on `GET /items`: `skip`, `limit`, `category_id`, `name_contains`, `
 
 ### Suggested pairing
 
+- **Same API with Gebweb MVC:** [gebweb-101](https://github.com/iammikek/gebweb-101) (8014) — decorator controllers, `@Auth`, `/docs`
 - **Compare minimal API-only backends:** [flask-101](https://github.com/iammikek/flask-101) (8011) or [express-101](https://github.com/iammikek/express-101) (8007) + geblang-101
 - **Compare typed scripting vs Go:** [go-101](https://github.com/iammikek/go-101) vs geblang-101 (Geblang runs on a Go VM)
 - **Pair with a client:** [react-101](https://github.com/iammikek/react-101), [vue-101](https://github.com/iammikek/vue-101), [alpine-101](https://github.com/iammikek/alpine-101), or [flutter-101](https://github.com/iammikek/flutter-101)
